@@ -1,5 +1,4 @@
 <?php
-//error_reporting(E_ALL & ~E_NOTICE);
 error_reporting(0);
 
 include 'vendor/autoload.php';
@@ -7,15 +6,16 @@ include 'conststr.php';
 include 'common.php';
 
 date_default_timezone_set('UTC');
-//echo '<pre>'. json_encode($_SERVER, JSON_PRETTY_PRINT).'</pre>';
-//echo '<pre>'. json_encode($_ENV, JSON_PRETTY_PRINT).'</pre>';
+
 if (!function_exists('curl_init')) {
     http_response_code(500);
     echo '<font color="red">Need curl</font>, please install php-curl.';
     exit(1);
 }
+
 global $platform;
 $platform = checkPlatform();
+
 function checkPlatform() {
     if (isset($_SERVER['USER']) && $_SERVER['USER'] === 'qcloud')
         return 'SCF';
@@ -26,39 +26,83 @@ function checkPlatform() {
     if (isset($_SERVER['BCE_CFC_RUNTIME_NAME']) && $_SERVER['BCE_CFC_RUNTIME_NAME'] == 'php7')
         return 'CFC';
     if (isset($_SERVER['HEROKU_APP_DIR']) && $_SERVER['HEROKU_APP_DIR'] === '/app')
-        return 'Heroku';
+        return 'Heroku';  
     if (isset($_ENV["VERCEL_ENV"]))
         return 'Vercel';
     if (isset($_SERVER['DOCUMENT_ROOT']) && substr($_SERVER['DOCUMENT_ROOT'], 0, 13) === '/home/runner/')
         return 'Replit';
     return 'Normal';
 }
+
+// 添加本地存储的缩略图处理
+if (isset($_GET['thumbnail'])) {
+    if (isset($_SERVER['disktag']) && $_SERVER['disktag']!='') {
+        $disktag = $_SERVER['disktag'];
+        if (getConfig('Driver', $disktag) == 'LocalStorage') {
+            $path = urldecode($_GET['thumbnail']);
+            $rootPath = getConfig('root_path', $disktag);
+            $thumbPath = $rootPath . '/.thumbnails/' . md5($path) . '.jpg';
+            
+            if (file_exists($thumbPath)) {
+                header('Content-Type: image/jpeg');
+                readfile($thumbPath);
+                exit;
+            }
+        }
+    }
+    http_response_code(404);
+    exit;
+}
+
+// 添加本地存储的文件下载处理
+if (isset($_GET['download'])) {
+    if (isset($_SERVER['disktag']) && $_SERVER['disktag']!='') {
+        $disktag = $_SERVER['disktag'];
+        if (getConfig('Driver', $disktag) == 'LocalStorage') {
+            $path = urldecode($_GET['download']);
+            $rootPath = getConfig('root_path', $disktag);
+            $fullPath = $rootPath . '/' . ltrim($path, '/');
+            
+            if (file_exists($fullPath) && is_file($fullPath)) {
+                // 检查文件大小限制
+                $maxSize = getConfig('max_size', $disktag);
+                if ($maxSize && filesize($fullPath) > $maxSize * 1024 * 1024) {
+                    http_response_code(403);
+                    exit('File too large');
+                }
+
+                header('Content-Type: ' . mime_content_type($fullPath));
+                header('Content-Disposition: attachment; filename="' . basename($path) . '"');
+                header('Content-Length: ' . filesize($fullPath));
+                readfile($fullPath);
+                exit;
+            }
+        }
+    }
+    http_response_code(404);
+    exit;
+}
+
 function writebackPlatform($p) {
     if ('SCF' == $p) $_SERVER['USER'] = 'qcloud';
     if ('FC' == $p) $_SERVER['FC_FUNC_CODE_PATH'] = getenv('FC_FUNC_CODE_PATH');
     if ('FG' == $p) $_SERVER['RUNTIME_LOG_PATH'] = '/home/snuser/log';
     if ('CFC' == $p) $_SERVER['BCE_CFC_RUNTIME_NAME'] = 'php7';
-    //if ('Heroku'==$p) $_SERVER['HEROKU_APP_DIR']='/app';
-    //if ('Vercel' == $p) $_SERVER['DOCUMENT_ROOT'] = '/var/task/user';
-    //if ('Replit'==$p) $_SERVER['DOCUMENT_ROOT']='/home/runner/';
 }
+
 if ('SCF' == $platform) {
     if (getenv('ONEMANAGER_CONFIG_SAVE') == 'file') include 'platform/TencentSCF_file.php';
     else include 'platform/TencentSCF_env.php';
 } elseif ('FC' == $platform) {
     include 'platform/AliyunFC.php';
 } elseif ('FG' == $platform) {
-    //if (getenv('ONEMANAGER_CONFIG_SAVE')=='file') include 'platform/HuaweiFG_file.php';
-    //else include 'platform/HuaweiFG_env.php';
     echo 'FG' . PHP_EOL;
 } elseif ('CFC' == $platform) {
     include 'platform/BaiduCFC.php';
 } elseif ('Heroku' == $platform) {
     include 'platform/Heroku.php';
     $path = getpath();
-    //echo 'path:'. $path;
     $_GET = getGET();
-    //echo '<pre>'. json_encode($_GET, JSON_PRETTY_PRINT).'</pre>';
     $re = main($path);
     $sendHeaders = array();
     foreach ($re['headers'] as $headerName => $headerVal) {
@@ -70,12 +114,9 @@ if ('SCF' == $platform) {
 } elseif ('Vercel' == $platform) {
     if (getenv('ONEMANAGER_CONFIG_SAVE') == 'env') include 'platform/Vercel_env.php';
     else include 'platform/Vercel.php';
-
-    //writebackPlatform('Vercel');
+    
     $path = getpath();
-    //echo 'path:'. $path;
     $_GET = getGET();
-    //echo '<pre>'. json_encode($_GET, JSON_PRETTY_PRINT).'</pre>';
     $re = main($path);
     $sendHeaders = array();
     foreach ($re['headers'] as $headerName => $headerVal) {
@@ -88,9 +129,7 @@ if ('SCF' == $platform) {
     include 'platform/Replit.php';
 
     $path = getpath();
-    //echo 'path:'. $path;
     $_GET = getGET();
-    //echo '<pre>'. json_encode($_GET, JSON_PRETTY_PRINT).'</pre>';
 
     $re = main($path);
     $sendHeaders = array();
@@ -104,9 +143,7 @@ if ('SCF' == $platform) {
     include 'platform/Normal.php';
 
     $path = getpath();
-    //echo 'path:'. $path;
     $_GET = getGET();
-    //echo '<pre>'. json_encode($_GET, JSON_PRETTY_PRINT).'</pre>';
     $re = main($path);
     $sendHeaders = array();
     foreach ($re['headers'] as $headerName => $headerVal) {
@@ -131,9 +168,7 @@ function main_handler($event, $context) {
     unset($_SERVER);
     writebackPlatform('SCF');
     GetGlobalVariable($event);
-    //echo '<pre>'. json_encode($_COOKIE, JSON_PRETTY_PRINT).'</pre>';
     $path = GetPathSetting($event, $context);
-
     return main($path);
 }
 
@@ -164,7 +199,6 @@ function handler($event, $context) {
         $path = GetPathSetting($event, $context);
 
         $re = main($path);
-
         return new RingCentral\Psr7\Response($re['statusCode'], $re['headers'], ($re['isBase64Encoded'] ? base64_decode($re['body']) : $re['body']));
     } elseif ('FG' == $platform) {
         // Huawei FG
@@ -183,19 +217,11 @@ function handler($event, $context) {
         unset($_SERVER);
         writebackPlatform('FG');
         GetGlobalVariable($event);
-        //echo '<pre>'. json_encode($_COOKIE, JSON_PRETTY_PRINT).'</pre>';
         $path = GetPathSetting($event, $context);
 
         return main($path);
     } elseif ('CFC' == $platform) {
         // Baidu CFC
-        //$html = '<pre>'. json_encode($event, JSON_PRETTY_PRINT).'</pre>';
-        //$html .= '<pre>'. json_encode($context, JSON_PRETTY_PRINT).'</pre>';
-        //$html .= '<pre>'. json_encode($_SERVER, JSON_PRETTY_PRINT).'</pre>';
-        //$html .= $event['path'];
-        //$html .= $context['functionBrn'];
-        //return json_encode(output($html), JSON_FORCE_OBJECT);
-
         printInput($event, $context);
         unset($_POST);
         unset($_GET);
@@ -203,7 +229,6 @@ function handler($event, $context) {
         unset($_SERVER);
         writebackPlatform('CFC');
         GetGlobalVariable($event);
-        //echo '<pre>'. json_encode($_COOKIE, JSON_PRETTY_PRINT).'</pre>';
         $path = GetPathSetting($event, $context);
 
         return json_encode(main($path), JSON_FORCE_OBJECT);

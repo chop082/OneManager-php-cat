@@ -69,6 +69,10 @@ $EnvConfigs = [
     'public_path'       => 0b0111,
     'fileConduitSize'   => 0b0110,
     'fileConduitCacheTime'   => 0b0110,
+
+    // 本地储蓄
+    'root_path'         => 0b0110,  // 本地存储根目录
+    'max_size'          => 0b0110,  // 最大文件大小限制(MB)
 ];
 
 $timezones = array(
